@@ -236,19 +236,37 @@ function createTerminal(fontSize) {
   }
 
   // Use the fontSize passed from app.js (getDisplaySettings().fontSize), defaulting to 14.
-  var storedFontSize = (typeof fontSize === 'number' && fontSize > 0) ? fontSize : 14;
+  var storedFontSize = (typeof fontSize === 'number' && fontSize > 0) ? fontSize : 17;
 
   const mobile = window.innerWidth < 600; // matches MOBILE_THRESHOLD in app.js
   const effectiveFontSize = mobile ? Math.min(storedFontSize, 12) : storedFontSize;
 
   _term = new window.Terminal({
-    cursorBlink: true,
+    cursorBlink: false,
     fontSize: effectiveFontSize,
     fontFamily: "'SF Mono', 'Fira Code', Consolas, monospace",
     theme: {
-      background: '#000000',
-      foreground: '#c9d1d9',
-      cursor: '#58a6ff',
+      background: '#24273a',
+      foreground: '#cad3f5',
+      cursor: '#f4dbd6',
+      cursorAccent: '#24273a',
+      selectionBackground: '#5b6078',
+      black: '#6e738d',
+      red: '#ed8796',
+      green: '#a6da95',
+      yellow: '#eed49f',
+      blue: '#8aadf4',
+      magenta: '#f5bde6',
+      cyan: '#8bd5ca',
+      white: '#b8c0e0',
+      brightBlack: '#8087a2',
+      brightRed: '#ed8796',
+      brightGreen: '#a6da95',
+      brightYellow: '#eed49f',
+      brightBlue: '#8aadf4',
+      brightMagenta: '#f5bde6',
+      brightCyan: '#8bd5ca',
+      brightWhite: '#a5adcb',
     },
     scrollback: mobile ? 500 : 5000,
     allowProposedApi: true,
@@ -409,6 +427,24 @@ function openTerminal(sessionName, remoteId, fontSize) {
     }
   });
 
+  // Right-click paste: intercept contextmenu on the terminal container and paste
+  // clipboard contents via the browser paste API. This matches ttyd's default
+  // right-click paste behavior that users expect.
+  var _pasteContainer = document.getElementById('terminal-container');
+  if (_pasteContainer) {
+    _pasteContainer.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(function(text) {
+          if (text && _term) {
+            // Send the pasted text character by character matching xterm.js style
+            _term.paste(text);
+          }
+        }).catch(function() {});
+      }
+    });
+  }
+
   // OSC 52 clipboard integration — bridges tmux clipboard to the browser.
   // When tmux copies text (with `set-clipboard on` in .tmux.conf), it sends
   // an OSC 52 escape sequence to the terminal. xterm.js surfaces this via the
@@ -490,13 +526,21 @@ function openTerminal(sessionName, remoteId, fontSize) {
     newPrev.addEventListener('click', _searchPrev);
   }
 
-  // --- Right-click context menu ---
-  // Suppress the browser context menu on plain right-click inside the terminal
-  // so tmux's own menu (when `set -g mouse on`) isn't covered by the browser's.
+  // --- Right-click context menu with paste ---
+  // Suppress the browser context menu on plain right-click inside the terminal.
+  // Instead, paste the system clipboard contents into the terminal.
   // Shift+RMB and Ctrl+RMB still open the browser context menu as escape hatches.
   container.addEventListener('contextmenu', function(e) {
     if (e.shiftKey || e.ctrlKey || e.metaKey) return; // let modified clicks through
     e.preventDefault();
+    // Right-click paste: read clipboard and send as terminal input
+    if (_ws && _ws.readyState === WebSocket.OPEN) {
+      navigator.clipboard.readText().then(function(text) {
+        if (text) {
+          _ws.send(_encodePayload(0x30, text));
+        }
+      }).catch(function() {});
+    }
   });
 
   connectWebSocket(sessionName, remoteId);
